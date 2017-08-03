@@ -146,6 +146,7 @@ int Configuration::Initialize()
     char				pszTmp[1024] = { 0 };
 
 	m_nMarketID = 14;
+	m_sExchangeID = "SHFE";
     ::GetModuleFileName( g_oModule, pszTmp, sizeof(pszTmp) );
     sPath = pszTmp;
     sPath = sPath.substr( 0, sPath.find(".dll") ) + ".ini";
