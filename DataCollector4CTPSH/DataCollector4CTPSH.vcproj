@@ -62,7 +62,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="gtestd.lib"
-				OutputFile="D:\ServiceManager\srvunit\DataNode\$(ProjectName).dll"
+				OutputFile="D:\ServiceManager\srvunit\DataCollector\$(ProjectName).dll"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="../libs/gtest/library_vc9/Debug/"
 				ModuleDefinitionFile="DataCollector4CTPSH.def"

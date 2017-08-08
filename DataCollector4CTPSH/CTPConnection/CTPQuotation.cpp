@@ -308,7 +308,7 @@ void CTPQuotation::FlushQuotation( CThostFtdcDepthMarketDataField* pQuotationDat
 	::memcpy( tagSnapLF.Code, pQuotationData->InstrumentID, sizeof(tagSnapLF.Code) );
 	::memcpy( tagSnapBS.Code, pQuotationData->InstrumentID, sizeof(tagSnapBS.Code) );
 
-	if( (nSerial=QuoCollector::GetCollector()->OnQuery( 1003, (char*)&tagName, sizeof(tagName) )) <= 0 )
+	if( (nSerial=QuoCollector::GetCollector()->OnQuery( 110, (char*)&tagName, sizeof(tagName) )) <= 0 )
 	{
 		return;
 	}
