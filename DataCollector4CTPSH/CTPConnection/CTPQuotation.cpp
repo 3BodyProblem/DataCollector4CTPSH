@@ -88,6 +88,21 @@ CTPWorkStatus& CTPQuotation::GetWorkStatus()
 
 int CTPQuotation::Activate()
 {
+	if( true == Configuration::GetConfig().IsBroadcastModel() )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::Activate() : ............ Broadcast Thread Activating............" );
+		m_oWorkStatus = ET_SS_DISCONNECTED;								///< 更新CTPQuotation会话的状态
+
+		if( 0 != SimpleTask::Activate() )
+		{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "CTPQuotation::Activate() : failed 2 activate broadcast thread..." );
+			return -1;
+		}
+
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::Activate() : ............ Broadcast Thread Activated!............" );
+		return 0;
+	}
+
 	if( GetWorkStatus() == ET_SS_UNACTIVE )
 	{
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::Activate() : ............ CTP Session Activating............" );
@@ -131,6 +146,64 @@ int CTPQuotation::Destroy()
 	}
 
 	return 0;
+}
+
+int CTPQuotation::LoadDataFile( std::string sFilePath, bool bEchoOnly )
+{
+	bool		bRet = QuotationSync::CTPSyncLoader::GetHandle().Init( sFilePath.c_str(), false );
+
+	if( false == bRet )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_ERROR, "CTPQuotation::LoadDataFile() : failed 2 open snap file : %s", sFilePath.c_str() );
+		return -1;
+	}
+
+	QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::LoadDataFile() : broadcasting quotation, errorcode = %d", bRet );
+
+	while( true )
+	{
+		CThostFtdcDepthMarketDataField	oData = { 0 };
+
+		if( QuotationSync::CTPSyncLoader::GetHandle().GetSnapData( oData ) <= 0 )
+		{
+			break;
+		}
+
+		if( true == bEchoOnly )
+		{
+			::printf( "%s\n", oData.InstrumentID );
+		}
+		else
+		{
+			OnRtnDepthMarketData( &oData );
+			::Sleep( 50 );
+		}
+	}
+
+	QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::LoadDataFile() : End of Quotation File..." );
+
+	return 0;
+}
+
+int CTPQuotation::Execute()
+{
+	DateTime		oTodayDate;
+	char			pszTmpFile[128] = { 0 };			///< 准备行情数据落盘
+	unsigned int	nNowTime = DateTime::Now().TimeToLong();
+
+	oTodayDate.SetCurDateTime();
+	m_oWorkStatus = ET_SS_INITIALIZING;					///< 更新CTPQuotation会话的状态
+	if( nNowTime > 40000 && nNowTime < 180000 ) {
+		::strcpy( pszTmpFile, "Quotation_day.dmp" );
+	} else if( nNowTime > 0 && nNowTime < 40000 ) {
+		oTodayDate -= (60*60*8);
+		::strcpy( pszTmpFile, "Quotation_nite.dmp" );
+	} else {
+		::strcpy( pszTmpFile, "Quotation_nite.dmp" );
+	}
+	std::string		sDumpFile = GenFilePathByWeek( Configuration::GetConfig().GetDumpFolder().c_str(), pszTmpFile, oTodayDate.Now().DateToLong() );
+
+	return LoadDataFile( sDumpFile, false );
 }
 
 int CTPQuotation::SubscribeQuotation()
@@ -269,7 +342,10 @@ void CTPQuotation::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pMarket
 		return;
 	}
 
-	QuotationSync::CTPSyncSaver::GetHandle().SaveSnapData( *pMarketData );
+	if( false == Configuration::GetConfig().IsBroadcastModel() )
+	{
+		QuotationSync::CTPSyncSaver::GetHandle().SaveSnapData( *pMarketData );
+	}
 
 	///< 判断是否收完全幅快照(以收到的代码是否有重复为判断依据)
 	bool	bInitializing = (enum E_SS_Status)m_oWorkStatus != ET_SS_WORKING;
@@ -375,7 +451,6 @@ void CTPQuotation::FlushQuotation( CThostFtdcDepthMarketDataField* pQuotationDat
 	{	///< 更新日期+时间
 		::strcpy( tagStatus.Key, "mkstatus" );
 		tagStatus.MarketStatus = 1;
-		tagStatus.MarketDate = nSnapTradingDate;
 		tagStatus.MarketTime = nSnapUpdateTime;
 		QuoCollector::GetCollector()->OnData( 109, (char*)&tagStatus, sizeof(tagStatus), false );
 	}

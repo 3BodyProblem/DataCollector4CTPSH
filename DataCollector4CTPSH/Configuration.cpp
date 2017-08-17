@@ -128,6 +128,7 @@ int ParseSvrConfig( inifile::IniFile& refIniFile, std::string sNodeName, CTPLink
 
 
 Configuration::Configuration()
+ : m_bBroadcastModel( false )
 {
 }
 
@@ -145,8 +146,9 @@ int Configuration::Initialize()
 	int					nErrCode = 0;
     char				pszTmp[1024] = { 0 };
 
-	m_nMarketID = 15;
+	m_nMarketID = 11;
 	m_sExchangeID = "SHFE";
+	m_bBroadcastModel = false;
     ::GetModuleFileName( g_oModule, pszTmp, sizeof(pszTmp) );
     sPath = pszTmp;
     sPath = sPath.substr( 0, sPath.find(".dll") ) + ".ini";
@@ -162,6 +164,15 @@ int Configuration::Initialize()
 		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : shutdown dump function." );
 	}
 
+	std::string	sBroadCastModel = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastModel"), nErrCode );
+	if( 0 == nErrCode )	{
+		if( sBroadCastModel == "1" )
+		{
+			m_bBroadcastModel = true;
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : Enter [Broadcase Model]..." );
+		}
+	}
+
 	if( 0 != ParseSvrConfig( oIniFile, "HQSRV", m_oHQConfigList ) )
 	{
 		return -2;
@@ -173,6 +184,11 @@ int Configuration::Initialize()
 	}
 
 	return 0;
+}
+
+bool Configuration::IsBroadcastModel() const
+{
+	return m_bBroadcastModel;
 }
 
 unsigned int Configuration::GetMarketID() const

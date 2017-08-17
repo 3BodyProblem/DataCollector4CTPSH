@@ -10,6 +10,7 @@
 #include "../Configuration.h"
 #include "../CTP_SH_QuoProtocal.h"
 #include "../Infrastructure/Lock.h"
+#include "../Infrastructure/Thread.h"
 
 
 /**
@@ -59,7 +60,7 @@ typedef	std::set<std::string>		T_SET_INSTRUMENTID;			///< 商品代码集合
  * @detail			封装了针对商品期货期权各市场的初始化、管理控制等方面的方法
  * @author			barry
  */
-class CTPQuotation : public CThostFtdcMdSpi
+class CTPQuotation : public CThostFtdcMdSpi, public SimpleTask
 {
 public:
 	CTPQuotation();
@@ -85,7 +86,22 @@ protected:
 	 */
 	int					SubscribeQuotation();
 
+	/**
+	 * @brief			任务函数(内循环)
+	 * @return			==0					成功
+						!=0					失败
+	 */
+	int					Execute();
+
 public:///< 公共方法函数
+	/**
+	 * @brief			加载行情数据
+	 * @param[in]		sFilePath			文件路径
+	 * @param[in]		bEchoOnly			回显标识
+	 * @return			>=0					成功
+	 */
+	int					LoadDataFile( std::string sFilePath, bool bEchoOnly = false );
+
 	/**
 	 * @brief			获取会话状态信息
 	 */

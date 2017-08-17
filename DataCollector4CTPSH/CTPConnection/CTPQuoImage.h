@@ -63,6 +63,14 @@ public:
 	 */
 	static int				GetRate( unsigned int nKind );
 
+	/**
+	 * @brief				加载落盘数据
+	 * @param[in]			sFilePath			落盘文件路径
+	 * @param[in]			bEchoOnly			是否需要加载的数据进行显示
+	 * @return				>=0					成功
+	 */
+	int						LoadDataFile( std::string sFilePath, bool bEchoOnly = false );
+
 protected:///< 自有方法函数
 	/**
 	 * @brief				发送登录请求包
@@ -78,16 +86,6 @@ protected:///< 自有方法函数
 	 * @brief				跳出响应等待
 	 */
 	void					BreakOutWaitingResponse();
-
-	/**
-	 * @brief				根据代码判断商品类型
-	 */
-	int						JudgeKindFromSecurityID( char* pszCode, unsigned int nCodeLen = 9 ) const;
-
-	/**
-	 * @brief				从商品代码中取出执行日期
-	 */
-	int						ParseExerciseDateFromCode( char (&Code)[20] ) const;
 
 protected:///< CThostFtdcTraderSpi的回调接口
 	void					OnFrontConnected();

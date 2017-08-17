@@ -89,7 +89,14 @@ public:
 	 */
 	unsigned int				GetMarketID() const;
 
+	/**
+	 * @brief					是否为播放模式
+	 * @return					true				行情自动播放模式
+	 */
+	bool						IsBroadcastModel() const;
+
 private:
+	bool						m_bBroadcastModel;		///< 数据自动播放模式
 	unsigned int				m_nMarketID;			///< 市场编号
 	std::string					m_sExchangeID;			///< 交易所编号
 	std::string					m_sDumpFileFolder;		///< 快照落盘路径(需要有文件名)
