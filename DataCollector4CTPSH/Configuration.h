@@ -95,8 +95,28 @@ public:
 	 */
 	bool						IsBroadcastModel() const;
 
+	/**
+	 * @brief					获取请求文件的路径
+	 */
+	std::string					GetTradeFilePath() const;
+
+	/**
+	 * @brief					获取行情文件的路径
+	 */
+	std::string					GetQuotationFilePath() const;
+
+	/**
+	 * @brief					获取正常速度播放的开始时间
+	 */
+	unsigned int				GetBroadcastBeginTime() const;
+
 private:
 	bool						m_bBroadcastModel;		///< 数据自动播放模式
+	std::string					m_sBcTradeFile;			///< 播放的请求文件路径
+	std::string					m_sBcQuotationFile;		///< 播放的实时文件路径
+	unsigned int				m_nBcBeginTime;			///< 正常速度的播放时间
+
+private:
 	unsigned int				m_nMarketID;			///< 市场编号
 	std::string					m_sExchangeID;			///< 交易所编号
 	std::string					m_sDumpFileFolder;		///< 快照落盘路径(需要有文件名)

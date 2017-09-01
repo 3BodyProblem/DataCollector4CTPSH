@@ -128,7 +128,7 @@ int ParseSvrConfig( inifile::IniFile& refIniFile, std::string sNodeName, CTPLink
 
 
 Configuration::Configuration()
- : m_bBroadcastModel( false )
+ : m_bBroadcastModel( false ), m_nBcBeginTime( 0 )
 {
 }
 
@@ -173,6 +173,25 @@ int Configuration::Initialize()
 		}
 	}
 
+	if( true == m_bBroadcastModel )
+	{
+		m_sBcTradeFile = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastTradeFile"), nErrCode );
+		if( 0 != nErrCode )	{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : invalid broadcast (trade) file." );
+		}
+
+		m_sBcQuotationFile = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastQuotationFile"), nErrCode );
+		if( 0 != nErrCode )	{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : invalid broadcast (quotation) file." );
+		}
+
+		m_nBcBeginTime = oIniFile.getIntValue( std::string("SRV"), std::string("BroadcastBeginTime"), nErrCode );
+		if( 0 != nErrCode )	{
+			m_nBcBeginTime = 0xffffffff;
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : Topspeed Mode...!" );
+		}
+	}
+
 	if( 0 != ParseSvrConfig( oIniFile, "HQSRV", m_oHQConfigList ) )
 	{
 		return -2;
@@ -184,6 +203,21 @@ int Configuration::Initialize()
 	}
 
 	return 0;
+}
+
+unsigned int Configuration::GetBroadcastBeginTime() const
+{
+	return m_nBcBeginTime;
+}
+
+std::string Configuration::GetTradeFilePath() const
+{
+	return m_sBcTradeFile;
+}
+
+std::string Configuration::GetQuotationFilePath() const
+{
+	return m_sBcQuotationFile;
 }
 
 bool Configuration::IsBroadcastModel() const

@@ -140,8 +140,9 @@ int CTPQuotation::Destroy()
 		m_pCTPApi->RegisterSpi(NULL);
 		m_pCTPApi->Release();
 		m_pCTPApi = NULL;
+		m_oDataRecorder.CloseFile();		///< 关闭落盘文件的句柄
+		m_oWorkStatus = ET_SS_UNACTIVE;		///< 更新CTPQuotation会话的状态
 
-		m_oWorkStatus = ET_SS_UNACTIVE;	///< 更新CTPQuotation会话的状态
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::Destroy() : ............ Destroyed! .............." );
 	}
 
@@ -150,33 +151,41 @@ int CTPQuotation::Destroy()
 
 int CTPQuotation::LoadDataFile( std::string sFilePath, bool bEchoOnly )
 {
-	bool		bRet = QuotationSync::CTPSyncLoader::GetHandle().Init( sFilePath.c_str(), false );
+	QuotationRecover		oDataRecover;
 
-	if( false == bRet )
+	if( 0 != oDataRecover.OpenFile( sFilePath.c_str(), Configuration::GetConfig().GetBroadcastBeginTime() ) )
 	{
 		QuoCollector::GetCollector()->OnLog( TLV_ERROR, "CTPQuotation::LoadDataFile() : failed 2 open snap file : %s", sFilePath.c_str() );
 		return -1;
 	}
 
-	QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::LoadDataFile() : broadcasting quotation, errorcode = %d", bRet );
+	if( true == bEchoOnly )
+	{
+		::printf( "合约代码,交易日,交易所代码,合约在交易所的代码,最新价,上次结算价,昨收盘,昨持仓量,今开盘,最高价,最低价,成交数量,成交金额,持仓量,今收盘,本次结算价,涨停板价,跌停板价,昨虚实度,今虚实度,最后修改时间,最后修改毫秒,\
+申买价一,申买量一,申卖价一,申卖量一,申买价二,申买量二,申卖价二,申卖量二,申买价三,申买量三,申卖价三,申卖量三,申买价四,申买量四,申卖价四,申卖量四,申买价五,申买量五,申卖价五,申卖量五,当日均价,业务日期\n" );
+	}
 
 	while( true )
 	{
 		CThostFtdcDepthMarketDataField	oData = { 0 };
 
-		if( QuotationSync::CTPSyncLoader::GetHandle().GetSnapData( oData ) <= 0 )
+		if( oDataRecover.Read( (char*)&oData, sizeof(CThostFtdcDepthMarketDataField) ) <= 0 )
 		{
 			break;
 		}
 
 		if( true == bEchoOnly )
 		{
-			::printf( "%s\n", oData.InstrumentID );
+			::printf( "%s,%s,%s,%s,%f,%f,%f,%f,%f,%f,%f,%d,%f,%f,%f,%f,%f,%f,%f,%f,%s,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%d,%f,%s\n", oData.InstrumentID, oData.TradingDay, oData.ExchangeID, oData.ExchangeInstID
+					, oData.LastPrice, oData.PreSettlementPrice, oData.PreClosePrice, oData.PreOpenInterest, oData.OpenPrice, oData.HighestPrice, oData.LowestPrice, oData.Volume, oData.Turnover
+					, oData.OpenInterest, oData.ClosePrice, oData.SettlementPrice, oData.UpperLimitPrice, oData.LowerLimitPrice, oData.PreDelta, oData.CurrDelta, oData.UpdateTime, oData.UpdateMillisec
+					, oData.BidPrice1, oData.BidVolume1, oData.AskPrice1, oData.AskVolume1, oData.BidPrice2, oData.BidVolume2, oData.AskPrice2, oData.AskVolume2, oData.BidPrice3, oData.BidVolume3
+					, oData.AskPrice3, oData.AskVolume3, oData.BidPrice4, oData.BidVolume4, oData.AskPrice4, oData.AskVolume4, oData.BidPrice5, oData.BidVolume5, oData.AskPrice5, oData.AskVolume5
+					, oData.AveragePrice, oData.ActionDay );
 		}
 		else
 		{
 			OnRtnDepthMarketData( &oData );
-			::Sleep( 50 );
 		}
 	}
 
@@ -187,23 +196,7 @@ int CTPQuotation::LoadDataFile( std::string sFilePath, bool bEchoOnly )
 
 int CTPQuotation::Execute()
 {
-	DateTime		oTodayDate;
-	char			pszTmpFile[128] = { 0 };			///< 准备行情数据落盘
-	unsigned int	nNowTime = DateTime::Now().TimeToLong();
-
-	oTodayDate.SetCurDateTime();
-	m_oWorkStatus = ET_SS_INITIALIZING;					///< 更新CTPQuotation会话的状态
-	if( nNowTime > 40000 && nNowTime < 180000 ) {
-		::strcpy( pszTmpFile, "Quotation_day.dmp" );
-	} else if( nNowTime > 0 && nNowTime < 40000 ) {
-		oTodayDate -= (60*60*8);
-		::strcpy( pszTmpFile, "Quotation_nite.dmp" );
-	} else {
-		::strcpy( pszTmpFile, "Quotation_nite.dmp" );
-	}
-	std::string		sDumpFile = GenFilePathByWeek( Configuration::GetConfig().GetDumpFolder().c_str(), pszTmpFile, oTodayDate.Now().DateToLong() );
-
-	return LoadDataFile( sDumpFile, false );
+	return LoadDataFile( Configuration::GetConfig().GetQuotationFilePath().c_str(), false );
 }
 
 int CTPQuotation::SubscribeQuotation()
@@ -221,26 +214,22 @@ int CTPQuotation::SubscribeQuotation()
 			pszCodes[n] = pszCodeList[n]+0;
 		}
 
-		if( nRet > 0 ) {
+		if( nRet > 0 )
+		{
 			QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::SubscribeQuotation() : Creating ctp session\'s dump file ......" );
 
-			DateTime		oTodayDate;
-			char			pszTmpFile[128] = { 0 };			///< 准备行情数据落盘
-			unsigned int	nNowTime = DateTime::Now().TimeToLong();
+			char			pszTmpFile[1024] = { 0 };			///< 准备行情数据落盘
+			::sprintf( pszTmpFile, "Quotation_%u_%d.dmp", DateTime::Now().DateToLong(), DateTime::Now().TimeToLong() );
+			int				nRet = m_oDataRecorder.OpenFile( JoinPath( Configuration::GetConfig().GetDumpFolder(), pszTmpFile ).c_str(), false );
 
-			oTodayDate.SetCurDateTime();
-			if( nNowTime > 40000 && nNowTime < 180000 ) {
-				::strcpy( pszTmpFile, "Quotation_day.dmp" );
-			} else if( nNowTime > 0 && nNowTime < 40000 ) {
-				oTodayDate -= (60*60*8);
-				::strcpy( pszTmpFile, "Quotation_nite.dmp" );
-			} else {
-				::strcpy( pszTmpFile, "Quotation_nite.dmp" );
+			if( nRet == 0 )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::SubscribeQuotation() : dump file created, result = %d", nRet );
 			}
-			std::string		sDumpFile = GenFilePathByWeek( Configuration::GetConfig().GetDumpFolder().c_str(), pszTmpFile, oTodayDate.Now().DateToLong() );
-			bool			bRet = QuotationSync::CTPSyncSaver::GetHandle().Init( sDumpFile.c_str(), DateTime::Now().DateToLong(), false );
-
-			QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuotation::SubscribeQuotation() : dump file created, result = %d", bRet );
+			else
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_ERROR, "CTPQuotation::SubscribeQuotation() : cannot generate dump file, errorcode = %d", nRet );
+			}
 		}
 
 		m_oWorkStatus = ET_SS_INITIALIZING;		///< 更新CTPQuotation会话的状态
@@ -344,7 +333,7 @@ void CTPQuotation::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pMarket
 
 	if( false == Configuration::GetConfig().IsBroadcastModel() )
 	{
-		QuotationSync::CTPSyncSaver::GetHandle().SaveSnapData( *pMarketData );
+		m_oDataRecorder.Record( (char*)pMarketData, sizeof(CThostFtdcDepthMarketDataField) );
 	}
 
 	///< 判断是否收完全幅快照(以收到的代码是否有重复为判断依据)

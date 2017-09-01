@@ -102,6 +102,8 @@ protected:
 	static T_MAP_RATE		m_mapRate;					///< 各分类的放大倍数
 	T_MAP_BASEDATA			m_mapBasicData;				///< 市场商品基础数据集合
 	CriticalObject			m_oLock;					///< 临界区对象
+protected:
+	QuotationRecorder		m_oDataRecorder;			///< 行情落盘对象
 };
 
 

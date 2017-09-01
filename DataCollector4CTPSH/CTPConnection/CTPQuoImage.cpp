@@ -45,24 +45,37 @@ int CTPQuoImage::GetSubscribeCodeList( char (&pszCodeList)[1024*5][20], unsigned
 
 int CTPQuoImage::LoadDataFile( std::string sFilePath, bool bEchoOnly )
 {
-	if( false == QuotationSync::CTPSyncLoader::GetHandle().Init( sFilePath.c_str(), true ) )
+	QuotationRecover		oDataRecover;
+
+	if( 0 != oDataRecover.OpenFile( sFilePath.c_str() ) )
 	{
 		QuoCollector::GetCollector()->OnLog( TLV_WARN, "CTPQuoImage::LoadDataFile() : failed 2 open static file : %s", sFilePath.c_str() );
 		return -1;
 	}
 
+	if( true == bEchoOnly )
+	{
+		::printf( "合约代码,交易所代码,合约名称,合约在交易所内代码,产品代码,产品类型,交割年份,交割月,市价单最大下单量,市价单最小下单量,限价单最大下单量,限价单最小下单量,合约数量乘数,最小变动价位,\
+创建日,上市日,到期日,开始交割日,结束交割日,合约生命周期状态,当前是否交易,持仓类型,持仓日期类型,多头保证金率,空头保证金率,是否使用大额单边保证金算法,基础商品代码,执行价,期权类型,\
+合约基础商品乘数,组合类型\n" );
+	}
+
 	while( true )
 	{
+		int							nLen = 0;
 		CThostFtdcInstrumentField	oData = { 0 };
 
-		if( QuotationSync::CTPSyncLoader::GetHandle().GetStaticData( oData ) <= 0 )
+		if( (nLen=oDataRecover.Read( (char*)&oData, sizeof(CThostFtdcInstrumentField) )) <= 0  )
 		{
 			break;
 		}
 
 		if( true == bEchoOnly )
 		{
-			::printf( "%s,%s\n", oData.InstrumentID, oData.InstrumentName );
+			::printf( "%s,%s,%s,%s,%s,%c,%d,%d,%d,%d,%d,%d,%d,%f,%s,%s,%s,%s,%s,%c,%d,%c,%c,%f,%f,%c,%s,%f,%c,%f,%c\n", oData.InstrumentID, oData.ExchangeID, oData.InstrumentName, oData.ExchangeInstID, oData.ProductID
+					, oData.ProductClass, oData.DeliveryYear, oData.DeliveryMonth, oData.MaxMarketOrderVolume, oData.MinMarketOrderVolume, oData.MaxLimitOrderVolume, oData.MinLimitOrderVolume, oData.VolumeMultiple
+					, oData.PriceTick, oData.CreateDate, oData.OpenDate, oData.ExpireDate, oData.StartDelivDate, oData.EndDelivDate, oData.InstLifePhase, oData.IsTrading, oData.PositionType, oData.PositionDateType
+					, oData.LongMarginRatio, oData.ShortMarginRatio, oData.MaxMarginSideAlgorithm, oData.UnderlyingInstrID, oData.StrikePrice, oData.OptionsType, oData.UnderlyingMultiple, oData.CombinationType );
 		}
 		else
 		{
@@ -77,15 +90,6 @@ int CTPQuoImage::FreshCache()
 {
 	QuoCollector::GetCollector()->OnLog( TLV_INFO, "CTPQuoImage::FreshCache() : ............ [%s] Freshing basic data ..............."
 										, (false==Configuration::GetConfig().IsBroadcastModel())? "NORMAL" : "BROADCAST" );
-
-	char			pszTmpFile[128] = { 0 };							///< 准备请求的静态数据落盘
-	unsigned int	nNowTime = DateTime::Now().TimeToLong();
-	if( nNowTime > 80000 && nNowTime < 110000 )
-		::strcpy( pszTmpFile, "Trade_am.dmp" );
-	else
-		::strcpy( pszTmpFile, "Trade_pm.dmp" );
-	std::string		sDumpFile = GenFilePathByWeek( Configuration::GetConfig().GetDumpFolder().c_str(), pszTmpFile, DateTime::Now().DateToLong() );
-
 	m_mapRate.clear();													///< 清空放大倍数映射表
 
 	if( false == Configuration::GetConfig().IsBroadcastModel() )
@@ -97,7 +101,9 @@ int CTPQuoImage::FreshCache()
 			return -1;
 		}
 
-		QuotationSync::CTPSyncSaver::GetHandle().Init( sDumpFile.c_str(), DateTime::Now().DateToLong(), true );
+		char		pszTmpFile[1024] = { 0 };							///< 准备请求的静态数据落盘
+		::sprintf( pszTmpFile, "Trade_%u_%u.dmp", DateTime::Now().DateToLong(), DateTime::Now().TimeToLong() );
+		m_oDataRecorder.OpenFile( JoinPath( Configuration::GetConfig().GetDumpFolder(), pszTmpFile ).c_str(), true );					///< 准备好落盘文件的句柄
 
 		m_pTraderApi->RegisterSpi( this );								///< 将this注册为事件处理的实例
 		if( false == Configuration::GetConfig().GetTrdConfList().RegisterServer( NULL, m_pTraderApi ) )///< 注册CTP链接需要的网络配置
@@ -116,11 +122,11 @@ int CTPQuoImage::FreshCache()
 			}
 		}
 
-		FreeApi();														///< 释放api，结束请求
+		FreeApi();														///< 释放api+落盘文件句柄，结束请求
 	}
 	else
 	{
-		if( LoadDataFile( sDumpFile, false ) < 0 )
+		if( LoadDataFile( Configuration::GetConfig().GetTradeFilePath().c_str(), false ) < 0 )
 		{
 			QuoCollector::GetCollector()->OnLog( TLV_WARN, "CTPQuoImage::FreshCache() : failed 2 load image data" );
 			return -4;
@@ -199,9 +205,8 @@ void CTPQuoImage::BuildBasicData()
 int CTPQuoImage::FreeApi()
 {
 	m_nTrdReqID = 0;						///< 重置请求ID
-	m_bIsResponded = false;
-
-	QuotationSync::CTPSyncSaver::GetHandle().Release( true );
+	m_bIsResponded = false;					///< 重置响应完成标识
+	m_oDataRecorder.CloseFile();			///< 关闭落盘文件句柄
 
 	if( m_pTraderApi )
 	{
@@ -324,7 +329,7 @@ void CTPQuoImage::OnRspQryInstrument( CThostFtdcInstrumentField *pInstrument, CT
 	{
 		if( false == Configuration::GetConfig().IsBroadcastModel() )
 		{
-			QuotationSync::CTPSyncSaver::GetHandle().SaveStaticData( *pInstrument );
+			m_oDataRecorder.Record( (char*)pInstrument, sizeof(CThostFtdcInstrumentField) );
 		}
 
 		if( false == m_bIsResponded && pInstrument->ProductClass == THOST_FTDC_PC_Futures )

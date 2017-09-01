@@ -159,6 +159,15 @@ extern "C"
 		::printf( "----------------------  [End]  -------------------------\n\n\n" );
 	}
 
+	__declspec(dllexport) void __stdcall Echo()
+	{
+		CTPQuoImage					objImage;
+		CTPQuotation				objQuotation;
+
+		objImage.LoadDataFile( Configuration::GetConfig().GetTradeFilePath().c_str(), true );			///< 解析请求文件
+		objQuotation.LoadDataFile( Configuration::GetConfig().GetQuotationFilePath().c_str(), true );	///< 解析实时文件
+	}
+
 }
 
 

@@ -1,4 +1,7 @@
 #include "DataDump.h"
+#include <windows.h>
+#include <time.h>
+#include <sys/timeb.h>
 
 
 std::string	JoinPath( std::string sPath, std::string sFileName )
@@ -24,156 +27,238 @@ std::string	GenFilePathByWeek( std::string sFolderPath, std::string sFileName, u
 }
 
 
-namespace QuotationSync
-{
-
-
-bool StaticSaver::Init( const char* pszFilePath, unsigned int nTradingDay )
-{
-	return MemoDumper<CThostFtdcInstrumentField>::Open( false, pszFilePath, nTradingDay );
-}
-
-void StaticSaver::Release()
-{
-	MemoDumper<CThostFtdcInstrumentField>::Close();
-}
-
-
-bool StaticLoader::Init( const char* pszFilePath )
-{
-	return MemoDumper<CThostFtdcInstrumentField>::Open( true, pszFilePath, 0 );
-}
-
-void StaticLoader::Release()
-{
-	MemoDumper<CThostFtdcInstrumentField>::Close();
-}
-
-
-bool SnapSaver::Init( const char* pszFilePath, unsigned int nTradingDay )
-{
-	m_bAppendModel = false;		///< 不开启追加模式
-
-	return MemoDumper<CThostFtdcDepthMarketDataField>::Open( false, pszFilePath, nTradingDay );
-}
-
-
-void SnapSaver::Release()
-{
-	m_bAppendModel = false;
-
-	MemoDumper<CThostFtdcDepthMarketDataField>::Close();
-}
-
-
-bool SnapLoader::Init( const char* pszFilePath )
-{
-	return MemoDumper<CThostFtdcDepthMarketDataField>::Open( true, pszFilePath, 0 );
-}
-
-
-void SnapLoader::Release()
-{
-	MemoDumper<CThostFtdcDepthMarketDataField>::Close();
-}
-
-
-CTPSyncSaver::CTPSyncSaver()
+QuotationRecorder::QuotationRecorder()
+ : m_nDataPos( 0 )
 {
 }
 
-CTPSyncSaver& CTPSyncSaver::GetHandle()
+QuotationRecorder::~QuotationRecorder()
 {
-	static	CTPSyncSaver	obj;
-
-	return obj;
+	CloseFile();
 }
 
-bool CTPSyncSaver::Init( const char* pszFilePath, unsigned int nTradingDay, bool bIsStaticData )
+void QuotationRecorder::CloseFile()
 {
-	Release( bIsStaticData );
-
-	if( false == bIsStaticData )
+	if( m_oDataFile.is_open() )
 	{
-		return m_oSnapSaver.Init( pszFilePath, nTradingDay );
+		m_oDataFile.flush();
+		m_oDataFile.close();
+		m_oDataFile.clear();
+	}
+
+	if( m_oIndexFile.is_open() )
+	{
+		m_oIndexFile.flush();
+		m_oIndexFile.close();
+		m_oIndexFile.clear();
+	}
+}
+
+int QuotationRecorder::OpenFile( const char *pszFilePath, bool bIsOverwrite )
+{
+	char							pszIndexFilePath[1024] = { 0 };
+	std::ios_base::open_mode		nOpenMode = (true==bIsOverwrite) ? (std::ios::out|std::ios::binary) : (std::ios::out|std::ios::binary | std::ios::app);
+
+	if( NULL == pszFilePath )
+	{
+		return -1;
+	}
+
+	CloseFile();
+	::sprintf( pszIndexFilePath, "%s.index", pszFilePath );
+
+	m_oDataFile.open( pszFilePath , nOpenMode );
+	if( !m_oDataFile.is_open() )
+	{
+		CloseFile();
+		return -2;
+	}
+
+	m_oIndexFile.open( pszIndexFilePath , nOpenMode );
+	if( !m_oIndexFile.is_open() )
+	{
+		CloseFile();
+		return -3;
+	}
+
+	m_oDataFile.seekp( 0, std::ios::end );
+
+    if( true == bIsOverwrite )
+	{
+        m_nDataPos = 0;
+    } else {
+		m_nDataPos = m_oDataFile.tellp();
+    }
+
+	return 0;
+}
+
+unsigned int get_ms_time()
+{
+    _timeb tb;
+    _ftime(&tb);
+    tm *t = localtime(&tb.time);
+    return (t->tm_hour * 10000 + t->tm_min * 100 + t->tm_sec) * 1000 + tb.millitm;
+}
+
+int QuotationRecorder::Record( const char* pszData, unsigned int nLen )
+{
+	if( NULL == pszData || 0 == nLen )
+	{
+		return -1;
+	}
+
+	if( !m_oDataFile.is_open() )
+	{
+		return -2;
+	}
+
+	if( !m_oIndexFile.is_open() )
+	{
+		return -3;
+	}
+
+	m_oDataFile.write( pszData, nLen );
+
+	RecordMetaInfo		oIndex = { 0 };
+	oIndex.nLen = nLen;
+	oIndex.nStart = m_nDataPos;
+	oIndex.nMs_time = get_ms_time();
+	m_oIndexFile.write( (const char*)&oIndex, sizeof(RecordMetaInfo) );
+
+	m_nDataPos += nLen;
+
+	return 0;
+}
+
+void QuotationRecorder::Flush()
+{
+	if( m_oDataFile.is_open() )
+	{
+		m_oDataFile.flush();
+	}
+
+	if( m_oIndexFile.is_open() )
+	{
+		m_oIndexFile.flush();
+	}
+}
+
+
+QuotationRecover::QuotationRecover()
+ : m_nLastTime( 0 )
+{
+}
+
+QuotationRecover::~QuotationRecover()
+{
+	CloseFile();
+}
+
+int QuotationRecover::OpenFile( const char *pszFilePath, unsigned int nBeginTime )
+{
+	char							pszIndexFilePath[1024] = { 0 };
+
+	if( NULL == pszFilePath )
+	{
+		return -1;
+	}
+
+	CloseFile();
+	if( nBeginTime < 0xffffffff )
+	{
+		m_nBeginTime = nBeginTime * 1000;			///< 快播时间
 	}
 	else
 	{
-		return m_oStaticSaver.Init( pszFilePath, nTradingDay );
+		m_nBeginTime = nBeginTime;					///< 全程快播
 	}
-}
+	::sprintf( pszIndexFilePath, "%s.index", pszFilePath );
 
-void CTPSyncSaver::Release( bool bIsStaticData )
-{
-	if( false == bIsStaticData )
+	m_oDataFile.open( pszFilePath , std::ios::in|std::ios::binary );
+	if( !m_oDataFile.is_open() )
 	{
-		m_oSnapSaver.Release();
+		CloseFile();
+		return -2;
 	}
-	else
+
+	m_oIndexFile.open( pszIndexFilePath , std::ios::in|std::ios::binary );
+	if( !m_oIndexFile.is_open() )
 	{
-		m_oStaticSaver.Release();
+		CloseFile();
+		return -3;
 	}
+
+	m_oDataFile.seekg( 0, std::ios::beg );
+
+	return 0;
 }
 
-int CTPSyncSaver::SaveStaticData( const CThostFtdcInstrumentField& refData )
+void QuotationRecover::CloseFile()
 {
-	return m_oStaticSaver.Write( refData);
-}
+	m_nLastTime = 0;
 
-int CTPSyncSaver::SaveSnapData( const CThostFtdcDepthMarketDataField& refData )
-{
-	return m_oSnapSaver.Write( refData);
-}
-
-
-CTPSyncLoader::CTPSyncLoader()
-{
-}
-
-CTPSyncLoader& CTPSyncLoader::GetHandle()
-{
-	static	CTPSyncLoader	obj;
-
-	return obj;
-}
-
-bool CTPSyncLoader::Init( const char* pszFilePath, bool bIsStaticData )
-{
-	Release( bIsStaticData );
-
-	if( false == bIsStaticData )
+	if( m_oDataFile.is_open() )
 	{
-		return m_oSnapLoader.Init( pszFilePath );
+		m_oDataFile.close();
 	}
-	else
+
+	if( m_oIndexFile.is_open() )
 	{
-		return m_oStaticLoader.Init( pszFilePath );
+		m_oIndexFile.close();
 	}
 }
 
-void CTPSyncLoader::Release( bool bIsStaticData )
+int QuotationRecover::Read( char* pszData, unsigned int nLen )
 {
-	if( false == bIsStaticData )
+	if( NULL == pszData || 0 == nLen )
 	{
-		m_oSnapLoader.Release();
+		return -1;
 	}
-	else
+
+	if( !m_oDataFile.is_open() )
 	{
-		m_oStaticLoader.Release();
+		return -2;
 	}
-}
 
-int CTPSyncLoader::GetStaticData( CThostFtdcInstrumentField& refData )
-{
-	return m_oStaticLoader.Read( refData);
-}
+	if( !m_oIndexFile.is_open() )
+	{
+		return -3;
+	}
 
-int CTPSyncLoader::GetSnapData( CThostFtdcDepthMarketDataField& refData )
-{
-	return m_oSnapLoader.Read( refData );
-}
+	if( m_oIndexFile.peek() == EOF || true == m_oIndexFile.eof() )
+	{
+		return 0;				///< 文件读完
+	}
 
+	RecordMetaInfo		oIndex = { 0 };
 
+	m_oIndexFile.read( (char*)&oIndex, sizeof(RecordMetaInfo) );
+
+	if( oIndex.nLen > nLen )
+	{
+		CloseFile();
+		::printf( "QuotationRecover::Read() : close file ... \n" );
+		return -4;
+	}
+
+	if( 0 == m_nLastTime )
+	{
+		m_nLastTime = oIndex.nMs_time;
+	}
+
+	int		nDiff = oIndex.nMs_time - m_nLastTime;		///< 计算需要sleep的时间
+
+	if( nDiff > 0 && oIndex.nMs_time > m_nBeginTime )
+	{
+		::Sleep( nDiff );
+	}
+
+	m_nLastTime = oIndex.nMs_time;
+	m_oDataFile.seekg( oIndex.nStart, std::ios::beg );
+	m_oDataFile.read( pszData, oIndex.nLen );
+
+	return m_oDataFile.gcount();
 }
 
 

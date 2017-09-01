@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <stdexcept>
+#include "DataDump.h"
 #include "ThostFtdcMdApi.h"
 #include "../Configuration.h"
 #include "../CTP_SH_QuoProtocal.h"
@@ -138,6 +139,8 @@ private:
 	T_SET_INSTRUMENTID	m_setRecvCode;			///< 收到的代码集合
 	unsigned int		m_nCodeCount;			///< 收到的快照商品数量
 	CriticalObject		m_oLock;				///< 临界区对象
+protected:
+	QuotationRecorder	m_oDataRecorder;		///< 行情落盘对象
 };
 
 
