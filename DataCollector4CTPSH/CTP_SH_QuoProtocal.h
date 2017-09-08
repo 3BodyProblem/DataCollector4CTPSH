@@ -23,7 +23,7 @@ typedef struct
 	unsigned int				PriceTick;					///< 最小变动价位
 	unsigned int				ContractMult;				///< 合约乘数
 	char						UnderlyingCode[20];			///< 标的证券代码
-	unsigned char				DerivativeType;				///< 衍生品类型：美式认购0/认沽1 欧式认购2/认沽3
+	char						OptionType;					///< 期权类型（'E' = 欧式期权 'A' = 美式期权）【期权】
 	unsigned int				PeriodsCount;				///< 交易时段信息列表长度
 	unsigned int				MarketPeriods[10][2];		///< 交易时段描述信息列表
 } tagSHFutureKindDetail_LF108;
@@ -42,6 +42,7 @@ typedef struct
 	char						Code[20];					///< 合约代码
 	char						Name[64];					///< 合约名称
 	unsigned int				Kind;						///< 证券类型
+	char						CallOrPut;					///< 认沽认购（'C' = 认购 'P' = 认沽）【期权】
 	unsigned int				XqPrice;					///< 行权价格[*放大倍数]
 	unsigned int				StartDate;					///< 首个交易日(YYYYMMDD)
 	unsigned int				EndDate;					///< 最后交易日(YYYYMMDD)

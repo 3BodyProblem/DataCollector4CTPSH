@@ -172,7 +172,7 @@ void CTPQuoImage::BuildBasicData()
 			refKind.LotFactor = 100;
 			refKind.PriceTick = refData.PriceTick * ::pow( (double)10, (int)refKind.PriceRate );
 			refKind.ContractMult = refData.VolumeMultiple;
-			refKind.DerivativeType = (THOST_FTDC_CP_CallOptions==refData.OptionsType) ? 0 : 1;
+			refKind.OptionType = 'A';
 			refKind.PeriodsCount = 4;
 			refKind.MarketPeriods[0][0] = 21*60;			///< 第一段，取夜盘的时段的最大范围
 			refKind.MarketPeriods[0][1] = 23*60+30;
@@ -345,6 +345,7 @@ void CTPQuoImage::OnRspQryInstrument( CThostFtdcInstrumentField *pInstrument, CT
 			if( it != m_mapKind.end() )
 			{
 				tagName.Kind = ::atoi( it->second.Key );
+				tagName.CallOrPut = (THOST_FTDC_CP_CallOptions==refSnap.OptionsType) ? 'C' : 'P';
 				tagName.DeliveryDate = ::atol(refSnap.StartDelivDate);						///< 交割日(YYYYMMDD)
 				tagName.StartDate = ::atol(refSnap.OpenDate);								///< 首个交易日(YYYYMMDD)
 				tagName.EndDate = ::atol(refSnap.ExpireDate);								///< 最后交易日(YYYYMMDD), 即 到期日
